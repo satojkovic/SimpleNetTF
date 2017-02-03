@@ -48,18 +48,26 @@ def main():
     # model definition
     def SimpleNet(x, weights, biases):
         # hidden layer with relu activation
-        hidden_layer = tf.add(tf.matmul(x, weights['W1']), biases['b1'])
-        hidden_layer = tf.nn.relu(hidden_layer)
+        with tf.name_scope('hidden_layer') as scope:
+            hidden_layer = tf.add(tf.matmul(x, weights['W1']), biases['b1'])
+            hidden_layer = tf.nn.relu(hidden_layer)
         # output layer with softmax function
-        out = tf.add(tf.matmul(hidden_layer, weights['W2']), biases['b2'])
-        out = tf.nn.softmax(out)
+        with tf.name_scope('output_layer') as scope:
+            out = tf.add(tf.matmul(hidden_layer, weights['W2']), biases['b2'])
+            out = tf.nn.softmax(out)
         return out
 
     # store layers weights and bias
-    weights = {'W1': tf.Variable(tf.random_normal(shape=[n_input, n_hidden])),
-               'W2': tf.Variable(tf.random_normal(shape=[n_hidden, n_output]))}
-    biases = {'b1': tf.Variable(tf.random_normal(shape=[n_hidden])),
-              'b2': tf.Variable(tf.random_normal(shape=[n_output]))}
+    weights = {
+        'W1': tf.Variable(
+            tf.random_normal(shape=[n_input, n_hidden]), name='weights'),
+        'W2': tf.Variable(
+            tf.random_normal(shape=[n_hidden, n_output]), name='weights')
+    }
+    biases = {'b1': tf.Variable(
+        tf.random_normal(shape=[n_hidden]), name='biases'),
+              'b2': tf.Variable(
+                  tf.random_normal(shape=[n_output]), name='biases')}
 
     # construct model
     pred = SimpleNet(x, weights, biases)
@@ -68,6 +76,7 @@ def main():
     cross_entropy = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(
             logits=pred, labels=y))
+    tf.summary.scalar('entropy', cross_entropy)
     train_step = tf.train.AdamOptimizer(
         learning_rate=learning_rate).minimize(cross_entropy)
 
@@ -76,16 +85,19 @@ def main():
 
     # launch the graph
     with tf.Session() as sess:
+        summary_writer = tf.summary.FileWriter(
+            '/tmp/SimpleNetLog', graph=sess.graph)
         sess.run(init)
+        summary_op = tf.summary.merge_all()
 
         for epoch in range(training_epochs):
             avg_cost = 0
             total_batch = X_train.shape[0] // batch_size
             for i in range(total_batch):
                 batch_xs, batch_ys = next_batch(X_train, y_train, batch_size)
+                feed_dict = {x: batch_xs, y: batch_ys}
                 _, c = sess.run([train_step, cross_entropy],
-                                feed_dict={x: batch_xs,
-                                           y: batch_ys})
+                                feed_dict=feed_dict)
 
                 # model evaluation
                 avg_cost += c / total_batch
@@ -93,6 +105,8 @@ def main():
             if epoch % display_step == 0:
                 print("Epoch %04d" % (epoch + 1),
                       "cost = {:.9f}".format(avg_cost))
+                summary_str = sess.run(summary_op, feed_dict=feed_dict)
+                summary_writer.add_summary(summary_str, epoch)
         print('Training finished.')
 
         # test model
